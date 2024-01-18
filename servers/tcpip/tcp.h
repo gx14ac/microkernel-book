@@ -17,6 +17,8 @@
 // 簡単のため、このTCP実装は素朴なHTTPクライアントが動く程度の状態しか実装していない。
 // パッシブオープンやアクティブクローズなどを実装する場合には、より多くの状態が登場する。
 enum tcp_state {
+    TCP_STATE_LISTEN,
+    TCP_STATE_SYN_RECVED,
     TCP_STATE_SYN_SENT,     // SYNを送信し、SYN+ACKを待っている状態
     TCP_STATE_ESTABLISHED,  // コネクションを確立した状態
     TCP_STATE_CLOSED,       // コネクションが閉じられた状態
@@ -31,15 +33,15 @@ enum tcp_pending_flag {
 
 // TCP通信の管理構造体 (PCB: Protocol Control Block)
 struct tcp_pcb {
-    bool in_use;               // 使用中かどうか
-    enum tcp_state state;      // コネクションの状態
-    uint32_t pending_flags;    // 送信する必要があるフラグ
-    uint32_t next_seqno;       // 次に送信すべきシーケンス番号
-    uint32_t last_seqno;       // 最後に送信したシーケンス番号
-    uint32_t last_ack;         // 最後に受信したシーケンス番号 + 1
-    uint32_t local_winsize;    // 送信ウィンドウサイズ
-    uint32_t remote_winsize;   // 受信ウィンドウサイズ
-    endpoint_t local;          // ソケットに紐付けられたIPアドレスとポート番号
+    bool in_use;              // 使用中かどうか
+    enum tcp_state state;     // コネクションの状態
+    uint32_t pending_flags;   // 送信する必要があるフラグ
+    uint32_t next_seqno;      // 次に送信すべきシーケンス番号
+    uint32_t last_seqno;      // 最後に送信したシーケンス番号
+    uint32_t last_ack;        // 最後に受信したシーケンス番号 + 1
+    uint32_t local_winsize;   // 送信ウィンドウサイズ
+    uint32_t remote_winsize;  // 受信ウィンドウサイズ
+    endpoint_t local;  // ソケットに紐付けられたIPアドレスとポート番号
     endpoint_t remote;         // 相手のIPアドレスとポート番号
     mbuf_t rx_buf;             // 受信バッファ
     mbuf_t tx_buf;             // 送信バッファ
@@ -72,6 +74,8 @@ struct tcp_header {
 } __packed;
 
 struct tcp_pcb *tcp_new(void *arg);
+error_t tcp_bind(struct tcp_pcb *pcb, ipv4addr_t addr, port_t port);
+void tcp_listen(struct tcp_pcb *pcb);
 error_t tcp_connect(struct tcp_pcb *sock, ipv4addr_t dst_addr, port_t dst_port);
 void tcp_close(struct tcp_pcb *sock);
 void tcp_write(struct tcp_pcb *sock, const void *data, size_t len);
