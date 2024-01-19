@@ -18,6 +18,7 @@
         project_NIX_PATH = nixpkgs;
         buildInputs = [
           pkgs.llvmPackages_15.clangUseLLVM
+          pkgs.qemu
         ];
       };
     });
