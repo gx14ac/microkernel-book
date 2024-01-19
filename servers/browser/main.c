@@ -17,22 +17,12 @@ static task_t tcpip_server;
     "</body>"                                                                  \
     "</html>\n"
 
-static void process(int sock, uint8_t *data, size_t len) {
-    // todo: fix this
-    static char buf[] =
-        "HTTP/1.1 200 OK\r\nConnection: close\rContent-Length: 109\r\n\r\n" INDEX_HTML;
-
-    struct message m;
-    m.type = TCPIP_WRITE_MSG;
-    m.tcpip_write.sock = sock;
-    memcpy(m.tcpip_write.data, buf, sizeof(buf));
-    m.tcpip_write.data_len = strlen(buf);
-    ASSERT_OK(ipc_call(tcpip_server, &m));
-}
-
 void main(void) {
     // find tcpip server
     tcpip_server = ipc_lookup("tcpip");
+    if (tcpip_server < 0) {
+        PANIC("ipc lookup not found");
+    }
 
     // send tcp_listen message
     struct message m;
