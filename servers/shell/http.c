@@ -140,17 +140,9 @@ void http_get(const char *url) {
 
         switch (m.type) {
             case TCPIP_CLOSED_MSG: {
-                m.type = TCPIP_READ_MSG;
-                m.tcpip_read.sock = m.tcpip_closed.sock;
-                error_t err = ipc_call(tcpip_server, &m);
-
-                ASSERT_OK(err);
-                received(sock, m.tcpip_read_reply.data,
-                         m.tcpip_read_reply.data_len);
-
                 m.type = TCPIP_CLOSE_MSG;
                 m.tcpip_close.sock = m.tcpip_close.sock;
-                ipc_call(tcpip_server, &m);
+                ASSERT_OK(ipc_call(tcpip_server, &m));
                 return;
             }
             case TCPIP_DATA_MSG: {

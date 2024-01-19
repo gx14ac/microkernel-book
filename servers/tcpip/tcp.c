@@ -61,7 +61,27 @@ static struct tcp_pcb *tcp_lookup(endpoint_t *local_ep, endpoint_t *remote_ep) {
         return pcb;
     }
 
-    return NULL;
+    // Look for the listening socket
+    return tcp_lookup_local(local_ep);
+}
+
+error_t tcp_bind(struct tcp_pcb *pcb, ipv4addr_t addr, port_t port) {
+    endpoint_t ep = {.addr = addr, .port = port};
+
+    // return err if port is already in use
+    if (tcp_lookup_local(&ep) != NULL) {
+        WARN("port %d in use", port);
+        return ERR_ALREADY_USED;
+    }
+
+    pcb->local = ep;
+
+    return OK;
+}
+
+void tcp_listen(struct tcp_pcb *pcb) {
+    pcb->state = TCP_STATE_LISTEN;
+    list_push_back(&active_pcbs, &pcb->next);
 }
 
 // 新しいPCBを作成する。
@@ -95,6 +115,7 @@ struct tcp_pcb *tcp_new(void *arg) {
     pcb->retransmit_at = 0;
     pcb->num_retransmits = 0;
     pcb->arg = arg;
+    pcb->parent = NULL;
     list_elem_init(&pcb->next);
     return pcb;
 }
@@ -263,6 +284,26 @@ static void tcp_process(struct tcp_pcb *pcb, ipv4addr_t src_addr,
           (flags & TCP_ACK) ? "ACK " : "", (flags & TCP_RST) ? "RST " : "",
           (flags & TCP_PSH) ? "PSH " : "");
 
+    if (pcb->state == TCP_STATE_LISTEN) {
+        if ((flags & TCP_SYN) == 0) {
+            // discard packet
+            return;
+        }
+
+        TRACE("tcp: new connection from port %d", src_port);
+
+        struct tcp_pcb *new_pcb = tcp_new(NULL);
+        new_pcb->state = TCP_STATE_SYN_RECVED;
+        new_pcb->local = pcb->local;
+        new_pcb->remote.addr = src_addr;
+        new_pcb->remote.port = src_port;
+        new_pcb->last_ack = seq + 1;
+        new_pcb->pending_flags |= (TCP_PEND_SYN | TCP_PEND_ACK);
+        new_pcb->parent = pcb;
+        list_push_back(&active_pcbs, &new_pcb->next);
+        return;
+    }
+
     // RSTパケットの処理
     if (flags & TCP_RST) {
         WARN("tcp: received RST from %pI4:%d", src_addr, src_port);
@@ -285,6 +326,18 @@ static void tcp_process(struct tcp_pcb *pcb, ipv4addr_t src_addr,
 
     // コネクションの状態に応じた処理を行う。
     switch (pcb->state) {
+        case TCP_STATE_SYN_RECVED: {
+            if ((flags & TCP_ACK) == 0) {
+                WARN("tcp: expected ACK but received %02x", flags);
+                break;
+            }
+
+            pcb->next_seqno = ack;
+            pcb->last_ack = seq;
+            pcb->state = TCP_STATE_ESTABLISHED;
+            pcb->retransmit_at = 0;
+            break;
+        }
         // SYNを送信して、SYN+ACKを待っている状態。
         case TCP_STATE_SYN_SENT: {
             // SYN+ACKを受信したかチェック。
@@ -313,6 +366,8 @@ static void tcp_process(struct tcp_pcb *pcb, ipv4addr_t src_addr,
 
             // 受信したデータを受信バッファにコピーする。
             size_t payload_len = mbuf_len(payload);
+            TRACE("tcp: received %d bytes (seq=%x)", payload_len, seq);
+
             if (0 < payload_len && payload_len <= pcb->local_winsize) {
                 // 受信したデータに対するACKを返す。また、ローカルのウィンドウサイズを減らす
                 // ことで、相手がデータを送りすぎないようにする。
@@ -331,13 +386,23 @@ static void tcp_process(struct tcp_pcb *pcb, ipv4addr_t src_addr,
                 ASSERT(mbuf_len(pcb->tx_buf) == 0);
 
                 // FINへのACKを返す。
-                pcb->state = TCP_STATE_CLOSED;
+                pcb->state = TCP_STATE_LAST_ACK;
                 pcb->retransmit_at = 0;
                 pcb->last_ack++;
-                pcb->pending_flags |= TCP_PEND_ACK;
-                callback_tcp_fin(pcb);
+                pcb->pending_flags |= (TCP_PEND_FIN | TCP_PEND_ACK);
+                break;
             }
 
+            break;
+        }
+        case TCP_STATE_LAST_ACK: {
+            if ((flags & TCP_ACK) == 0) {
+                WARN("tcp: exected last ack, but received %02x", flags);
+                break;
+            }
+
+            pcb->state = TCP_STATE_CLOSED;
+            callback_tcp_fin(pcb);
             break;
         }
         default:

@@ -90,7 +90,19 @@ static struct socket *get_socket_from_pcb(struct tcp_pcb *pcb) {
 
 // TCPソケットに新しいデータが届いたときに呼ばれる。
 void callback_tcp_data(struct tcp_pcb *pcb) {
-    struct socket *sock = get_socket_from_pcb(pcb);
+    struct socket *sock;
+
+    if (!pcb->arg) {
+        // accept new client
+        ASSERT(pcb->parent != NULL);
+        sock = alloc_socket();
+        sock->task = ((struct socket *) pcb->parent->arg)->task;
+        sock->tcp_pcb = pcb;
+        pcb->arg = sock;
+        TRACE("tcp: accept new client: %d", sock->fd);
+    } else {
+        sock = get_socket_from_pcb(pcb);
+    }
 
     struct message m;
     m.type = TCPIP_DATA_MSG;
@@ -271,9 +283,43 @@ void main(void) {
                 }
 
                 free_socket(sock);
+                TRACE("tcp: destroy socket: %d", sock->fd);
 
                 m.type = TCPIP_CLOSE_REPLY_MSG;
                 ipc_reply(m.src, &m);
+                break;
+            }
+            case TCPIP_LISTEN_MSG: {
+                // create new socket
+                struct socket *sock = alloc_socket();
+                struct tcp_pcb *pcb = tcp_new(sock);
+
+                // try to bind pcb to specified port
+                error_t err = tcp_bind(pcb, IPV4_ADDR_UNSPECIFIED,
+                                       m.tcpip_listen.listen_port);
+
+                if (err != OK) {
+                    // delete socket
+                    sock->used = false;
+                    // reply error message
+                    ipc_reply_err(m.src, err);
+                    break;
+                }
+
+                // listen
+                tcp_listen(pcb);
+
+                TRACE("tcp: listening on port %d: %d",
+                      m.tcpip_listen.listen_port, sock->fd);
+
+                // init socket
+                sock->task = m.src;
+                sock->tcp_pcb = pcb;
+
+                // reply
+                m.type = TCPIP_LISTEN_REPLY_MSG;
+                m.tcpip_listen_reply.sock = sock->fd;
+                ipc_send_noblock(m.src, &m);
                 break;
             }
             default:
