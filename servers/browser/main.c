@@ -13,7 +13,7 @@ static task_t tcpip_server;
     "   <meta charset=\"utf-8\">"                                              \
     "</head>"                                                                  \
     "<body>"                                                                   \
-    "<h1>Hello from WASM OS!</h1>"                                             \
+    "<h1>hello from browser service</h1>"                                      \
     "</body>"                                                                  \
     "</html>\n"
 
