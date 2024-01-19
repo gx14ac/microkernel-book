@@ -8,7 +8,7 @@
 #include <libs/user/syscall.h>
 #include <libs/user/task.h>
 
-static struct task *tasks[NUM_TASKS_MAX];      // タスク管理構造体
+static struct task *tasks[NUM_TASKS_MAX];  // タスク管理構造体
 static list_t services = LIST_INIT(services);  // サービス管理構造体のリスト
 
 // タスクIDからタスク管理構造体を取得する。
@@ -176,6 +176,7 @@ task_t service_lookup_or_wait(struct task *task, const char *name) {
 void service_dump(void) {
     for (int i = 0; i < NUM_TASKS_MAX; i++) {
         struct task *task = tasks[i];
+        // todo: set a time limit
         if (task && strlen(task->waiting_for) > 0) {
             WARN(
                 "%s: stil waiting for a service \"%s\""

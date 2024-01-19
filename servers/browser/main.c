@@ -21,7 +21,8 @@ void main(void) {
     // find tcpip server
     tcpip_server = ipc_lookup("tcpip");
     if (tcpip_server < 0) {
-        PANIC("ipc lookup not found");
+        ERROR("ipc lookup not found");
+        return;
     }
 
     // send tcp_listen message
