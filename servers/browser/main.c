@@ -47,8 +47,8 @@ void main(void) {
                 // close socket
                 m.type = TCPIP_CLOSE_MSG;
                 m.tcpip_close.sock = m.tcpip_close.sock;
-                ipc_call(tcpip_server, &m);
-                return;
+                ASSERT_OK(ipc_call(tcpip_server, &m));
+                break;
             }
 
             case TCPIP_DATA_MSG: {
@@ -56,8 +56,15 @@ void main(void) {
                 m.type = TCPIP_READ_MSG;
                 m.tcpip_read.sock = sock;
                 ASSERT_OK(ipc_call(tcpip_server, &m));
-                process(sock, m.tcpip_read_reply.data,
-                        m.tcpip_read_reply.data_len);
+                // response(todo: fix this)
+                static char buf[] =
+                    "HTTP/1.1 200 OK\r\nConnection: close\rContent-Length: 109\r\n\r\n" INDEX_HTML;
+
+                m.type = TCPIP_WRITE_MSG;
+                m.tcpip_write.sock = sock;
+                memcpy(m.tcpip_write.data, buf, sizeof(buf));
+                m.tcpip_write.data_len = strlen(buf);
+                ASSERT_OK(ipc_call(tcpip_server, &m));
                 break;
             }
 

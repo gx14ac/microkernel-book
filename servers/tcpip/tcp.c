@@ -115,6 +115,7 @@ struct tcp_pcb *tcp_new(void *arg) {
     pcb->retransmit_at = 0;
     pcb->num_retransmits = 0;
     pcb->arg = arg;
+    pcb->parent = NULL;
     list_elem_init(&pcb->next);
     return pcb;
 }
@@ -289,12 +290,17 @@ static void tcp_process(struct tcp_pcb *pcb, ipv4addr_t src_addr,
             return;
         }
 
-        // todo: fix this
-        pcb->state = TCP_STATE_SYN_RECVED;
-        pcb->remote.addr = src_addr;
-        pcb->remote.port = src_port;
-        pcb->last_ack = seq + 1;
-        pcb->pending_flags |= (TCP_PEND_SYN | TCP_PEND_SYN);
+        TRACE("tcp: new connection from port %d", src_port);
+
+        struct tcp_pcb *new_pcb = tcp_new(NULL);
+        new_pcb->state = TCP_STATE_SYN_RECVED;
+        new_pcb->local = pcb->local;
+        new_pcb->remote.addr = src_addr;
+        new_pcb->remote.port = src_port;
+        new_pcb->last_ack = seq + 1;
+        new_pcb->pending_flags |= (TCP_PEND_SYN | TCP_PEND_ACK);
+        new_pcb->parent = pcb;
+        list_push_back(&active_pcbs, &new_pcb->next);
         return;
     }
 
@@ -360,6 +366,8 @@ static void tcp_process(struct tcp_pcb *pcb, ipv4addr_t src_addr,
 
             // 受信したデータを受信バッファにコピーする。
             size_t payload_len = mbuf_len(payload);
+            TRACE("tcp: received %d bytes (seq=%x)", payload_len, seq);
+
             if (0 < payload_len && payload_len <= pcb->local_winsize) {
                 // 受信したデータに対するACKを返す。また、ローカルのウィンドウサイズを減らす
                 // ことで、相手がデータを送りすぎないようにする。
@@ -378,13 +386,23 @@ static void tcp_process(struct tcp_pcb *pcb, ipv4addr_t src_addr,
                 ASSERT(mbuf_len(pcb->tx_buf) == 0);
 
                 // FINへのACKを返す。
-                pcb->state = TCP_STATE_CLOSED;
+                pcb->state = TCP_STATE_LAST_ACK;
                 pcb->retransmit_at = 0;
                 pcb->last_ack++;
-                pcb->pending_flags |= TCP_PEND_ACK;
-                callback_tcp_fin(pcb);
+                pcb->pending_flags |= (TCP_PEND_FIN | TCP_PEND_ACK);
+                break;
             }
 
+            break;
+        }
+        case TCP_STATE_LAST_ACK: {
+            if ((flags & TCP_ACK) == 0) {
+                WARN("tcp: exected last ack, but received %02x", flags);
+                break;
+            }
+
+            pcb->state = TCP_STATE_CLOSED;
+            callback_tcp_fin(pcb);
             break;
         }
         default:

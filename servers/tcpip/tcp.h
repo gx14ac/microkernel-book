@@ -21,7 +21,8 @@ enum tcp_state {
     TCP_STATE_SYN_RECVED,
     TCP_STATE_SYN_SENT,     // SYNを送信し、SYN+ACKを待っている状態
     TCP_STATE_ESTABLISHED,  // コネクションを確立した状態
-    TCP_STATE_CLOSED,       // コネクションが閉じられた状態
+    TCP_STATE_LAST_ACK,
+    TCP_STATE_CLOSED,  // コネクションが閉じられた状態
 };
 
 // 送信待ちフラグ
@@ -49,6 +50,7 @@ struct tcp_pcb {
     int retransmit_at;         // 次に再送すべき時刻
     list_elem_t next;          // 次の要素へのポインタ
     void *arg;                 // コールバック関数に渡す引数
+    struct tcp_pcb *parent;
 };
 
 // TCPヘッダのフラグ

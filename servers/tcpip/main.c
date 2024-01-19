@@ -90,7 +90,19 @@ static struct socket *get_socket_from_pcb(struct tcp_pcb *pcb) {
 
 // TCPソケットに新しいデータが届いたときに呼ばれる。
 void callback_tcp_data(struct tcp_pcb *pcb) {
-    struct socket *sock = get_socket_from_pcb(pcb);
+    struct socket *sock;
+
+    if (!pcb->arg) {
+        // accept new client
+        ASSERT(pcb->parent != NULL);
+        sock = alloc_socket();
+        sock->task = ((struct socket *) pcb->parent->arg)->task;
+        sock->tcp_pcb = pcb;
+        pcb->arg = sock;
+        TRACE("tcp: accept new client: %d", sock->fd);
+    } else {
+        sock = get_socket_from_pcb(pcb);
+    }
 
     struct message m;
     m.type = TCPIP_DATA_MSG;
@@ -271,6 +283,7 @@ void main(void) {
                 }
 
                 free_socket(sock);
+                TRACE("tcp: destroy socket: %d", sock->fd);
 
                 m.type = TCPIP_CLOSE_REPLY_MSG;
                 ipc_reply(m.src, &m);
@@ -295,6 +308,9 @@ void main(void) {
 
                 // listen
                 tcp_listen(pcb);
+
+                TRACE("tcp: listening on port %d: %d",
+                      m.tcpip_listen.listen_port, sock->fd);
 
                 // init socket
                 sock->task = m.src;
