@@ -25,4 +25,3 @@ $ make -j8 RELEASE=1    # OSをビルドする (コンパイラのより高度�
 $ make -j8 run          # OSをビルドしてQEMUで実行する (シングルコア)
 $ make -j8 run CPUS=4   # OSをビルドしてQEMUで実行する (4コア)
 ```
-
